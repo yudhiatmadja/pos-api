@@ -1,0 +1,36 @@
+-- name: CreateOrder :one
+INSERT INTO orders (
+    outlet_id, table_session_id, cashier_id, order_number, 
+    total_amount, tax_amount, discount_amount, final_amount, note
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9
+) RETURNING *;
+
+-- name: CreateOrderItem :one
+INSERT INTO order_items (
+    order_id, product_id, product_name, product_price, quantity, total_price, note
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7
+) RETURNING *;
+
+-- name: GetOrder :one
+SELECT * FROM orders
+WHERE id = $1 LIMIT 1;
+
+-- name: ListOrdersByOutlet :many
+SELECT * FROM orders
+WHERE outlet_id = $1 
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;
+
+-- name: UpdateOrderStatus :one
+UPDATE orders
+SET status = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: UpdateOrderPaymentStatus :one
+UPDATE orders
+SET payment_status = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
