@@ -19,7 +19,7 @@ docker run --rm ^
 --network pos-api_default ^
 migrate/migrate:v4.19.1 ^
 -path=/migrations ^
--database "postgres://postgres:password@postgres-pos:5432/mypos_db?sslmode=disable" ^
+-database "postgres://root:secret@pos_postgres:5432/pos_db?sslmode=disable" ^
 -verbose down %STEPS%
 
 if %ERRORLEVEL% EQU 0 (

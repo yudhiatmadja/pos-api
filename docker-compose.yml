@@ -11,7 +11,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pos_db_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
@@ -22,5 +22,5 @@ services:
       - redis_data:/data
 
 volumes:
-  postgres_data:
+  pos_db_data:
   redis_data:

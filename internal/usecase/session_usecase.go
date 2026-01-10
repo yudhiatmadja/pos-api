@@ -35,7 +35,7 @@ func (uc *sessionUsecase) CreateSession(ctx context.Context, tableID uuid.UUID) 
 
 	// Create session in DB
 	session, err := uc.repo.CreateSession(ctx, repository.CreateSessionParams{
-		TableID:   tableID,
+		TableID:   pgtype.UUID{Bytes: tableID, Valid: true},
 		Token:     token,
 		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
 	})
@@ -44,8 +44,8 @@ func (uc *sessionUsecase) CreateSession(ctx context.Context, tableID uuid.UUID) 
 	}
 
 	return &domain.TableSession{
-		ID:        session.ID,
-		TableID:   session.TableID,
+		ID:        uuid.UUID(session.ID.Bytes),
+		TableID:   uuid.UUID(session.TableID.Bytes),
 		Token:     session.Token,
 		ExpiresAt: session.ExpiresAt.Time,
 		IsActive:  session.IsActive.Bool,
@@ -63,12 +63,12 @@ func (uc *sessionUsecase) ValidateSession(ctx context.Context, token string) (*d
 	}
 
 	return &domain.TableSession{
-		ID:        row.ID,
-		TableID:   row.TableID,
+		ID:        uuid.UUID(row.ID.Bytes),
+		TableID:   uuid.UUID(row.TableID.Bytes),
 		Token:     row.Token,
 		ExpiresAt: row.ExpiresAt.Time,
 		IsActive:  row.IsActive.Bool,
 		TableName: row.TableName,
-		OutletID:  row.OutletID,
+		OutletID:  uuid.UUID(row.OutletID.Bytes),
 	}, nil
 }
