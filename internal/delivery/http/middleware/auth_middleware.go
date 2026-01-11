@@ -47,6 +47,14 @@ func AuthMiddleware(tokenMaker util.TokenMaker) gin.HandlerFunc {
 		}
 
 		ctx.Set(AuthorizationPayloadKey, payload)
+		// Set convenience keys for RoleMiddleware and Handlers
+		ctx.Set("user_id", payload.UserID.String())
+		ctx.Set("roles", payload.Roles)
+		// Fallback for single role middleware if it checks "role"
+		if len(payload.Roles) > 0 {
+			ctx.Set("role", payload.Roles[0])
+		}
+
 		ctx.Next()
 	}
 }

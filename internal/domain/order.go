@@ -60,6 +60,7 @@ type CreateOrderRequest struct {
 	TableSessionID *uuid.UUID               `json:"table_session_id"`
 	Note           string                   `json:"note"`
 	Items          []CreateOrderItemRequest `json:"items" binding:"required,dive"`
+	IdempotencyKey string                   `json:"idempotency_key"` // Optional
 }
 
 type CreateOrderItemRequest struct {

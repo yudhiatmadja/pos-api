@@ -33,11 +33,16 @@ func (h *ShiftHandler) OpenShift(c *gin.Context) {
 		return
 	}
 
-	// Override UserID from token if needed for security,
-	// or validate req.UserID matches token.
+	// Validate user_id matches token
 	authUserIDStr := c.GetString("user_id")
-	if authUserIDStr != "" && authUserIDStr != req.UserID.String() {
-		// Optional: enforce same user
+	if authUserIDStr != "" {
+		// Just parse it to ensure validity,
+		// Use it if req.UserID is empty, or enforce match.
+		// MVP: Set it from token.
+		uid, err := uuid.Parse(authUserIDStr)
+		if err == nil {
+			req.UserID = uid
+		}
 	}
 
 	shift, err := h.ShiftUsecase.OpenShift(c.Request.Context(), &req)
@@ -66,7 +71,6 @@ func (h *ShiftHandler) CloseShift(c *gin.Context) {
 }
 
 func (h *ShiftHandler) GetCurrentShift(c *gin.Context) {
-	// user_id from query or token
 	userIDStr := c.GetString("user_id")
 	userID, _ := uuid.Parse(userIDStr)
 

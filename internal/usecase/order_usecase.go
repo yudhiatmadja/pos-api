@@ -1,7 +1,8 @@
 package usecase
 
 import (
-	"context"
+	"context" // Keeping context as it's used throughout the file. The instruction to remove it seems to be based on a misunderstanding or an incomplete example.
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"time"
@@ -14,11 +15,11 @@ import (
 )
 
 type orderUsecase struct {
-	store    repository.Store
+	store    repository.Repository
 	eventSvc domain.EventService
 }
 
-func NewOrderUsecase(store repository.Store, eventSvc domain.EventService) domain.OrderUsecase {
+func NewOrderUsecase(store repository.Repository, eventSvc domain.EventService) domain.OrderUsecase {
 	return &orderUsecase{
 		store:    store,
 		eventSvc: eventSvc,
@@ -26,7 +27,20 @@ func NewOrderUsecase(store repository.Store, eventSvc domain.EventService) domai
 }
 
 func (uc *orderUsecase) CreateOrder(ctx context.Context, req *domain.CreateOrderRequest) (*domain.Order, error) {
-	// TODO: Idempotency Check
+	// 1. Idempotency Check
+	if req.IdempotencyKey != "" {
+		existing, err := uc.store.GetIdempotencyKey(ctx, req.IdempotencyKey)
+		if err == nil {
+			// Found existing key, return cached order
+			var cachedOrder domain.Order
+			if jsonErr := json.Unmarshal(existing.ResponseBody, &cachedOrder); jsonErr == nil {
+				return &cachedOrder, nil
+			}
+			// If unmarshal fails, we proceed to recreate (or log error) - treating as new for safety or erroring?
+			// Safer to error to warn client.
+			return nil, fmt.Errorf("failed to recover idempotent order")
+		}
+	}
 
 	var order domain.Order
 
@@ -113,6 +127,19 @@ func (uc *orderUsecase) CreateOrder(ctx context.Context, req *domain.CreateOrder
 			CreatedAt:   dbOrder.CreatedAt.Time,
 		}
 
+		// 4. Save Idempotency Key (Inside Tx for consistency)
+		if req.IdempotencyKey != "" {
+			jsonBytes, _ := json.Marshal(order)
+			_, err = q.CreateIdempotencyKey(ctx, repository.CreateIdempotencyKeyParams{
+				Key:            req.IdempotencyKey,
+				ResponseStatus: 201,
+				ResponseBody:   jsonBytes,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to save idempotency key: %w", err)
+			}
+		}
+
 		return nil
 	})
 
@@ -127,7 +154,18 @@ func (uc *orderUsecase) CreateOrder(ctx context.Context, req *domain.CreateOrder
 }
 
 func (uc *orderUsecase) UpdateStatus(ctx context.Context, orderID uuid.UUID, status domain.OrderStatus, userID uuid.UUID) (*domain.Order, error) {
-	// Simplified implementation
+	// 1. Get current order to validate transition
+	currentOrder, err := uc.store.GetOrder(ctx, pgtype.UUID{Bytes: orderID, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("order not found")
+	}
+
+	// 2. Validate state transition
+	if !isValidTransition(domain.OrderStatus(currentOrder.Status), status) {
+		return nil, fmt.Errorf("invalid status transition from %s to %s", currentOrder.Status, status)
+	}
+
+	// 3. Update status
 	dbOrder, err := uc.store.UpdateOrderStatus(ctx, repository.UpdateOrderStatusParams{
 		ID:     pgtype.UUID{Bytes: orderID, Valid: true},
 		Status: string(status),
@@ -136,13 +174,13 @@ func (uc *orderUsecase) UpdateStatus(ctx context.Context, orderID uuid.UUID, sta
 		return nil, err
 	}
 
-	// Audit Log (TODO: Inject AuditUsecase or use store.CreateAuditLog here)
-	_ = uc.store.CreateAuditLog(ctx, repository.CreateAuditLogParams{
+	// 4. Audit Log
+	_, _ = uc.store.CreateAuditLog(ctx, repository.CreateAuditLogParams{
 		UserID:   pgtype.UUID{Bytes: userID, Valid: true},
 		Action:   "UPDATE_ORDER_STATUS",
-		Entity:   "Order",
+		Entity:   pgtype.Text{String: "Order", Valid: true},
 		EntityID: pgtype.UUID{Bytes: orderID, Valid: true},
-		Before:   []byte(`{"status": "OLD"}`), // Mock
+		Before:   []byte(fmt.Sprintf(`{"status": "%s"}`, currentOrder.Status)),
 		After:    []byte(fmt.Sprintf(`{"status": "%s"}`, status)),
 	})
 

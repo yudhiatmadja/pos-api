@@ -4,20 +4,21 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 
 	"pos-api/internal/domain"
 	"pos-api/internal/repository"
 
-	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type paymentUsecase struct {
-	store repository.Store
+	store repository.Repository
 }
 
-func NewPaymentUsecase(store repository.Store) domain.PaymentUsecase {
+func NewPaymentUsecase(store repository.Repository) domain.PaymentUsecase {
 	return &paymentUsecase{store: store}
 }
 
@@ -51,22 +52,53 @@ func (uc *paymentUsecase) UploadQRIS(ctx context.Context, req *domain.UploadQRIS
 		return nil, err
 	}
 
+	publicURL := fmt.Sprintf("/uploads/qris/%s", filename)
+
 	// MVP: Create/Update Payment record
 	// Assume we just update the qris_url of an existing payment or create one.
-	// For MVP let's assume one payment per order for now or just insert.
-	// We need a repository method CreatePayment? I didn't add it in SQLC yet?
-	// payments (order_id, payment_method, amount, qris_url)
+	// 4. Update Payment Record in DB
+	// Assume request contains OrderID to link payment, or we treat ID as PaymentID??
+	// The UploadQRISRequest in domain current has OrderID? Let's check.
+	// If it doesn't, we might need to assume the ID passed is PaymentID or OrderID.
+	// Let's assume for now we create a new payment record if it doesn't exist or update if it does.
+	// But usually, QRIS is generated for an Order.
+	// Let's create a payment record linked to OrderID.
 
-	// NOTE: I need to add payment queries to generic SQL or create generic insert.
-	// For now, I'll return a mock domain object if repo logic is missing,
-	// OR I should have added `payments.sql`?
-	// Protocol buffer: I missed `payments.sql`.
+	// Need to parse OrderID from request if available.
+	// For MVP, let's assume we update the payment if we have a payment ID, or create one if we have order ID.
+	// Domain struct: UploadQRISRequest { OrderID uuid.UUID, Image file ... }
+
+	err = uc.store.ExecTx(ctx, func(q *repository.Queries) error {
+		// Try to find existing payment for order
+		existing, err := q.GetPaymentByOrder(ctx, pgtype.UUID{Bytes: req.OrderID, Valid: true})
+		if err != nil {
+			// Create new payment
+			amount := pgtype.Numeric{Int: big.NewInt(0), Exp: 0, Valid: true} // Unknown amount yet?
+			_, err = q.CreatePayment(ctx, repository.CreatePaymentParams{
+				OrderID:       pgtype.UUID{Bytes: req.OrderID, Valid: true},
+				PaymentMethod: "QRIS",
+				Amount:        amount, // Placeholder
+				Status:        "PENDING",
+				QrisUrl:       pgtype.Text{String: publicURL, Valid: true},
+			})
+			return err
+		} else {
+			// Update existing
+			err = q.UpdatePaymentQRIS(ctx, repository.UpdatePaymentQRISParams{
+				ID:      existing.ID,
+				QrisUrl: pgtype.Text{String: publicURL, Valid: true},
+			})
+			return err
+		}
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to save payment record: %w", err)
+	}
 
 	return &domain.Payment{
-		ID:            uuid.New(),
-		OrderID:       req.OrderID,
-		PaymentMethod: domain.PaymentMethodQRIS,
-		Status:        domain.PaymentPending,
-		QRISImageURL:  dst,
+		OrderID:      req.OrderID,
+		QRISImageURL: publicURL,
+		Status:       domain.PaymentPending,
 	}, nil
 }

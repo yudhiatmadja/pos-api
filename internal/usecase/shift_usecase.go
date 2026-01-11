@@ -14,10 +14,10 @@ import (
 )
 
 type shiftUsecase struct {
-	store repository.Store
+	store repository.Repository
 }
 
-func NewShiftUsecase(store repository.Store) domain.ShiftUsecase {
+func NewShiftUsecase(store repository.Repository) domain.ShiftUsecase {
 	return &shiftUsecase{store: store}
 }
 

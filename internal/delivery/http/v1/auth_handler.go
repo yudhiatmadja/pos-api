@@ -31,13 +31,13 @@ func (h *AuthHandler) register(ctx *gin.Context) {
 		return
 	}
 
-	user, err := h.authUsecase.Register(ctx, &req)
+	profile, err := h.authUsecase.Register(ctx, &req)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, user)
+	ctx.JSON(http.StatusCreated, profile)
 }
 
 func (h *AuthHandler) login(ctx *gin.Context) {

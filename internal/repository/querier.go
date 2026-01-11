@@ -18,6 +18,7 @@ type Querier interface {
 	CreateIdempotencyKey(ctx context.Context, arg CreateIdempotencyKeyParams) (IdempotencyKey, error)
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
+	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreateProduct(ctx context.Context, arg CreateProductParams) (Product, error)
 	CreateProfile(ctx context.Context, arg CreateProfileParams) (Profile, error)
 	CreateRole(ctx context.Context, arg CreateRoleParams) (Role, error)
@@ -30,6 +31,7 @@ type Querier interface {
 	GetIdempotencyKey(ctx context.Context, key string) (IdempotencyKey, error)
 	GetOrder(ctx context.Context, id pgtype.UUID) (Order, error)
 	GetOrdersBySession(ctx context.Context, tableSessionID pgtype.UUID) ([]Order, error)
+	GetPaymentByOrder(ctx context.Context, orderID pgtype.UUID) (Payment, error)
 	GetProduct(ctx context.Context, id pgtype.UUID) (Product, error)
 	GetProfile(ctx context.Context, id pgtype.UUID) (Profile, error)
 	GetProfileByEmail(ctx context.Context, email pgtype.Text) (Profile, error)
@@ -46,6 +48,7 @@ type Querier interface {
 	ListStores(ctx context.Context, arg ListStoresParams) ([]Store, error)
 	UpdateOrderPaymentStatus(ctx context.Context, arg UpdateOrderPaymentStatusParams) (Order, error)
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
+	UpdatePaymentQRIS(ctx context.Context, arg UpdatePaymentQRISParams) error
 	UpdateProductStock(ctx context.Context, arg UpdateProductStockParams) (Product, error)
 	UpdateStore(ctx context.Context, arg UpdateStoreParams) (Store, error)
 }

@@ -14,7 +14,7 @@ import (
 )
 
 type authUsecase struct {
-	store      repository.Store // Use Store interface for Tx
+	store      repository.Repository
 	tokenMaker util.TokenMaker
 	config     AuthConfig
 }
@@ -23,7 +23,7 @@ type AuthConfig struct {
 	AccessTokenDuration time.Duration
 }
 
-func NewAuthUsecase(store repository.Store, tokenMaker util.TokenMaker, config AuthConfig) domain.AuthUsecase {
+func NewAuthUsecase(store repository.Repository, tokenMaker util.TokenMaker, config AuthConfig) domain.AuthUsecase {
 	return &authUsecase{
 		store:      store,
 		tokenMaker: tokenMaker,
@@ -61,8 +61,8 @@ func (uc *authUsecase) Register(ctx context.Context, req *domain.RegisterRequest
 
 		resProfile, err := q.CreateProfile(ctx, repository.CreateProfileParams{
 			ID:       resAuth.ID, // Link ID
-			Email:    req.Email,
-			FullName: req.FullName,
+			Email:    pgtype.Text{String: req.Email, Valid: true},
+			FullName: pgtype.Text{String: req.FullName, Valid: true},
 			Role:     string(req.Role),
 			StoreID:  storeID,
 		})
@@ -73,14 +73,8 @@ func (uc *authUsecase) Register(ctx context.Context, req *domain.RegisterRequest
 		// Map to domain
 		var sID *uuid.UUID
 		if resProfile.StoreID.Valid {
-			if idBytes, ok := resProfile.StoreID.Bytes.([16]byte); ok {
-				uid := uuid.UUID(idBytes)
-				sID = &uid
-			} else {
-				// Try direct conversion if scanned differently or sqlc version diff, usually Bytes is [16]byte
-				uid := uuid.UUID(resProfile.StoreID.Bytes)
-				sID = &uid
-			}
+			uid := uuid.UUID(resProfile.StoreID.Bytes)
+			sID = &uid
 		}
 
 		profile = &domain.Profile{
@@ -90,7 +84,7 @@ func (uc *authUsecase) Register(ctx context.Context, req *domain.RegisterRequest
 			Role:      domain.UserRole(resProfile.Role),
 			StoreID:   sID,
 			CreatedAt: resProfile.CreatedAt.Time,
-			UpdatedAt: resProfile.UpdatedAt.Time,
+			// UpdatedAt: resProfile.UpdatedAt.Time, // Not available in DB yet
 		}
 		return nil
 	})
@@ -151,7 +145,7 @@ func (uc *authUsecase) Login(ctx context.Context, req *domain.LoginRequest) (*do
 			Role:      domain.UserRole(profileDB.Role),
 			StoreID:   sID,
 			CreatedAt: profileDB.CreatedAt.Time,
-			UpdatedAt: profileDB.UpdatedAt.Time,
+			// UpdatedAt: profileDB.UpdatedAt.Time,
 		},
 	}, nil
 }

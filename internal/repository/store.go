@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Store interface {
+type Repository interface {
 	Querier
 	ExecTx(ctx context.Context, fn func(*Queries) error) error
 }
@@ -17,7 +17,7 @@ type SQLStore struct {
 	connPool *pgxpool.Pool
 }
 
-func NewStore(connPool *pgxpool.Pool) Store {
+func NewStore(connPool *pgxpool.Pool) Repository {
 	return &SQLStore{
 		Queries:  New(connPool),
 		connPool: connPool,

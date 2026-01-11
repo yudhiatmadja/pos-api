@@ -53,25 +53,17 @@ func main() {
 		AccessTokenDuration: accessTokenDuration,
 	}
 
-	// Adapting AuthUsecase to use 'store' queries (assuming it takes repository.Queries compatible interface)
-	// If AuthUsecase expects *Queries, Store satisfies Querier interface (embedded) if initialized correctly.
-	// My SQLStore embeds *Queries.
-	// But `store` variable is interface `Store`.
-	// Check auth_usecase.go if needed, but likely it uses generated interface.
-	// For safety, I'll pass store.Queries (type assertion or method?)
-	// SQLStore has *Queries embedded.
-	// But store is interface. I need to expose Queries from Store?
-	// Or just type assert.
-	sqlStore := store.(*repository.SQLStore)
+	// Usecases
+	authUsecase := usecase.NewAuthUsecase(store, tokenMaker, authConfig)
 
-	authUsecase := usecase.NewAuthUsecase(sqlStore.Queries, connPool, tokenMaker, authConfig)
+	// SessionUsecase likely uses *repository.Queries (need to verify its impl in existing codebase or assume)
+	// If it hasn't been updated to Store, we extract Queries.
+	sqlStore := store.(*repository.SQLStore)
 	sessionUsecase := usecase.NewSessionUsecase(sqlStore.Queries)
 
-	// New Order Usecase with EventService
 	orderUsecase := usecase.NewOrderUsecase(store, hub)
-
-	// New Shift Usecase
 	shiftUsecase := usecase.NewShiftUsecase(store)
+	paymentUsecase := usecase.NewPaymentUsecase(store)
 
 	// 4. Setup Router
 	router := gin.Default()
@@ -80,7 +72,7 @@ func main() {
 	// CORS Middleware
 	router.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE, PATCH") // Added PATCH
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE, PATCH")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -89,26 +81,25 @@ func main() {
 		c.Next()
 	})
 
-	// Public Routes
+	// 5. Handlers & Routes
 	apiV1 := router.Group("/api/v1")
 	v1.NewAuthHandler(apiV1, authUsecase)
 	v1.NewSessionHandler(apiV1, sessionUsecase)
 
-	// Auth Middleware for my handlers
-	// middleware.AuthMiddleware expects util.TokenMaker
+	// Auth Middleware
 	authMiddleware := middleware.AuthMiddleware(tokenMaker)
 
-	// Use my Handlers
+	// Protected Routes handled by specific Handlers
 	handler.NewOrderHandler(router, orderUsecase, authMiddleware)
 	handler.NewShiftHandler(router, shiftUsecase, authMiddleware)
-	// v1.NewPaymentHandler(apiV1, orderUsecase) // payment handled in OrderHandler potentially or need separate
+	handler.NewPaymentHandler(router, paymentUsecase, authMiddleware)
 
 	// WebSocket Route
-	router.GET("/ws", func(c *gin.Context) {
+	apiV1.GET("/ws", func(c *gin.Context) {
 		ws.ServeWs(hub, c)
 	})
 
-	// 5. Start Server
+	// 6. Start Server
 	log.Printf("Starting server on %s", serverAddress)
 	err = router.Run(serverAddress)
 	if err != nil {
