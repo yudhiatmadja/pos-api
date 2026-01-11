@@ -66,5 +66,8 @@ type CreateOrderItemRequest struct {
 
 type OrderUsecase interface {
 	CreateOrder(ctx context.Context, req *CreateOrderRequest) (*Order, error)
-	// Add UpdateStatus, etc.
+	// Order Processing
+	UpdateStatus(ctx context.Context, orderID uuid.UUID, status OrderStatus, userID uuid.UUID) (*Order, error)
+	GetOrder(ctx context.Context, orderID uuid.UUID) (*Order, error)
+	GetOrdersBySession(ctx context.Context, sessionID uuid.UUID) ([]Order, error)
 }

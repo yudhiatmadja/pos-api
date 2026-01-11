@@ -133,6 +133,47 @@ func (q *Queries) GetOrder(ctx context.Context, id pgtype.UUID) (Order, error) {
 	return i, err
 }
 
+const getOrdersBySession = `-- name: GetOrdersBySession :many
+SELECT id, outlet_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at FROM orders
+WHERE table_session_id = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) GetOrdersBySession(ctx context.Context, tableSessionID pgtype.UUID) ([]Order, error) {
+	rows, err := q.db.Query(ctx, getOrdersBySession, tableSessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Order
+	for rows.Next() {
+		var i Order
+		if err := rows.Scan(
+			&i.ID,
+			&i.OutletID,
+			&i.TableSessionID,
+			&i.CashierID,
+			&i.OrderNumber,
+			&i.Status,
+			&i.PaymentStatus,
+			&i.TotalAmount,
+			&i.TaxAmount,
+			&i.DiscountAmount,
+			&i.FinalAmount,
+			&i.Note,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrdersByOutlet = `-- name: ListOrdersByOutlet :many
 SELECT id, outlet_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at FROM orders
 WHERE outlet_id = $1 

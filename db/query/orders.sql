@@ -34,3 +34,8 @@ UPDATE orders
 SET payment_status = $2, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
+
+-- name: GetOrdersBySession :many
+SELECT * FROM orders
+WHERE table_session_id = $1
+ORDER BY created_at DESC;

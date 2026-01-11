@@ -26,6 +26,13 @@ type Category struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type IdempotencyKey struct {
+	Key            string             `json:"key"`
+	ResponseStatus int32              `json:"response_status"`
+	ResponseBody   []byte             `json:"response_body"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type Order struct {
 	ID             pgtype.UUID        `json:"id"`
 	OutletID       pgtype.UUID        `json:"outlet_id"`
