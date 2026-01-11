@@ -95,7 +95,8 @@ func main() {
 	v1.NewSessionHandler(apiV1, sessionUsecase)
 
 	// Auth Middleware for my handlers
-	authMiddleware := middleware.AuthMiddleware(tokenSymmetricKey)
+	// middleware.AuthMiddleware expects util.TokenMaker
+	authMiddleware := middleware.AuthMiddleware(tokenMaker)
 
 	// Use my Handlers
 	handler.NewOrderHandler(router, orderUsecase, authMiddleware)

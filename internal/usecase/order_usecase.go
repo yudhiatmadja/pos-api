@@ -29,7 +29,6 @@ func (uc *orderUsecase) CreateOrder(ctx context.Context, req *domain.CreateOrder
 	// TODO: Idempotency Check
 
 	var order domain.Order
-	var finalItems []domain.OrderItem
 
 	err := uc.store.ExecTx(ctx, func(q *repository.Queries) error {
 		// 1. Validate Products & Calculate Total
@@ -78,8 +77,6 @@ func (uc *orderUsecase) CreateOrder(ctx context.Context, req *domain.CreateOrder
 			OrderNumber:    orderNumber,
 			TotalAmount:    totalAmountNumeric,
 			FinalAmount:    totalAmountNumeric,
-			Status:         "NEW",
-			PaymentStatus:  "UNPAID",
 			Note:           pgtype.Text{String: req.Note, Valid: req.Note != ""},
 		})
 		if err != nil {
@@ -116,7 +113,6 @@ func (uc *orderUsecase) CreateOrder(ctx context.Context, req *domain.CreateOrder
 			Items:       orderItems,
 			CreatedAt:   dbOrder.CreatedAt.Time,
 		}
-		finalItems = orderItems
 		return nil
 	})
 
