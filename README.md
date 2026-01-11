@@ -1,345 +1,366 @@
+# POS Backend - Point of Sale System
 
-
-# POS Backend – Setup & API Documentation
-
-Backend service for a **Point of Sale (POS)** system built with **Golang**, using **PostgreSQL**, **Redis**, and **WebSocket** for realtime updates.
-Designed to be consumed by **Flutter**, **Web**, or other POS clients.
+Backend service untuk sistem **Point of Sale (POS)** yang dibangun dengan **Golang**, menggunakan **PostgreSQL**, **Redis**, dan **WebSocket** untuk update realtime. Dirancang untuk dikonsumsi oleh client **Flutter**, **Web**, atau aplikasi POS lainnya.
 
 ---
 
-## 🚀 Features
+## 🚀 Fitur
 
-* Authentication (Register & Login)
-* Role-based access (Kasir, Kitchen, etc.)
-* Order Management
-* Table Session (QR Ordering)
-* Cashier Shift Management
-* Realtime updates via WebSocket
-* Docker-based infrastructure
+- **Authentication & Authorization** - Register, Login, Role-based Access Control (RBAC)
+- **Order Management** - Create, Update, Track orders dengan state machine
+- **Table Sessions** - QR Code ordering untuk pelanggan
+- **Cashier Shift Management** - Open/Close shift dengan cash tracking
+- **Realtime Updates** - WebSocket untuk notifikasi live
+- **Idempotency** - Mencegah duplicate orders
+- **Audit Logging** - Track semua perubahan data penting
 
 ---
 
 ## 🛠 Tech Stack
 
-* **Golang** ≥ 1.22
-* **PostgreSQL** (Docker)
-* **Redis** (Docker)
-* **Docker Compose**
-* **WebSocket**
-* **JWT Authentication**
+- **Golang** ≥ 1.22
+- **PostgreSQL** (via Docker)
+- **Redis** (via Docker)
+- **Docker Compose**
+- **WebSocket** untuk realtime communication
+- **JWT** untuk authentication
 
 ---
 
 ## 📦 Prerequisites
 
-Make sure you have the following installed:
+Pastikan tools berikut sudah terinstall:
 
-* **Go (Golang)** ≥ 1.22
+- **Go (Golang)** ≥ 1.22  
   👉 [https://go.dev/dl/](https://go.dev/dl/)
-* **Docker Desktop**
+- **Docker Desktop**  
   👉 [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/)
-* **Git**
+- **Git**  
   👉 [https://git-scm.com/](https://git-scm.com/)
 
 ---
 
-## 🐳 Start Infrastructure (Docker)
+## 🚀 Quick Start
 
-We use Docker Compose to run PostgreSQL and Redis.
+### 1. Clone Repository
 
-1. Open terminal (CMD / PowerShell) in the project root
-2. Run:
+```bash
+git clone <repository-url>
+cd pos-backend
+```
+
+### 2. Start Infrastructure (Docker)
+
+Jalankan PostgreSQL dan Redis menggunakan Docker Compose:
 
 ```bash
 docker-compose up -d
 ```
 
-> `-d` means detached mode (runs in background)
-
-3. Verify containers:
+Verifikasi containers berjalan:
 
 ```bash
 docker ps
 ```
 
-You should see:
+Anda harus melihat:
+- `pos_postgres`
+- `pos_redis`
 
-* `pos_postgres`
-* `pos_redis`
+### 3. Run Database Migrations
 
----
-
-## 🗄 Run Database Migrations
-
-Create database tables using the provided migration script.
+Buat database tables dengan migration script:
 
 ```bash
 ./migrate-up.bat
 ```
 
-✅ If successful, you’ll see:
-
+✅ Jika berhasil, akan muncul pesan:
 ```
 Migrasi berhasil dijalankan
 ```
 
-### Troubleshooting
-
-* Make sure PostgreSQL container is running and healthy
-* Check Docker logs if migration fails
-
----
-
-## ▶️ Run the Application
-
-### Download dependencies (first time only)
+### 4. Download Dependencies
 
 ```bash
 go mod tidy
 ```
 
-### Run server
+### 5. Run Application
 
 ```bash
 go run cmd/main.go
 ```
 
-Expected log:
-
-```text
+Expected output:
+```
 2026/01/11 17:00:00 Starting server on 0.0.0.0:8080
 ```
 
----
+### 6. Verify Server
 
-## ✅ Verify Server
-
-Open browser or Postman:
+Buka browser atau Postman dan akses:
 
 ```
 http://localhost:8080/api/v1/ping
 ```
 
-If configured correctly, you should receive a response or see logs confirming the server is alive.
-
 ---
 
 ## 📚 API Documentation
 
-**Base URL**
+### Base URL
 
 ```
 http://localhost:8080/api/v1
 ```
 
----
+### Authentication
 
-### 1️⃣ Authentication
+Semua endpoint (kecuali `/auth/register` dan `/auth/login`) memerlukan **Bearer Token**.
 
-#### Register User
-
-**POST** `/auth/register`
-Auth: ❌ None
-
-```json
-{
-  "username": "cashier1",
-  "password": "strongpassword",
-  "role": "KASIR"
-}
-```
-
-**Response – 201 Created**
-
-```json
-{
-  "id": "uuid...",
-  "username": "cashier1",
-  "role": "KASIR"
-}
-```
-
----
-
-#### Login
-
-**POST** `/auth/login`
-Auth: ❌ None
-
-```json
-{
-  "username": "cashier1",
-  "password": "strongpassword"
-}
-```
-
-**Response – 200 OK**
-
-```json
-{
-  "access_token": "ey...",
-  "user": { }
-}
-```
-
-📌 **Note:**
-Use this token for protected routes:
-
+**Header:**
 ```
 Authorization: Bearer <access_token>
 ```
 
 ---
 
-### 2️⃣ Table Sessions (QR Ordering)
+## 🔐 1. Authentication
 
-#### Create Session
+### Register User
 
-**POST** `/table-sessions`
+Membuat user baru (staff, cashier, owner).
 
+**Endpoint:** `POST /auth/register`  
+**Auth:** ❌ None
+
+**Request Body:**
 ```json
 {
-  "table_id": "uuid..."
+  "email": "owner@tokopi.com",
+  "password": "strongpassword",
+  "full_name": "John Doe",
+  "role": "STORE_OWNER",
+  "store_id": "uuid-store-123"
 }
 ```
 
-**Response – 201 Created**
-
-```json
-{
-  "token": "session_token_..."
-}
-```
-
----
-
-#### Validate Session
-
-**POST** `/table-sessions/validate`
-
-```json
-{
-  "token": "session_token_..."
-}
-```
-
----
-
-### 3️⃣ Orders
-
-#### Create Order
-
-**POST** `/orders`
-Auth: ✅ Required
-
-```json
-{
-  "outlet_id": "uuid...",
-  "table_session_id": "uuid... (optional)",
-  "note": "No onions",
-  "items": [
-    {
-      "product_id": "uuid...",
-      "quantity": 2,
-      "note": "Extra cheese"
-    }
-  ]
-}
-```
-
-**Response – 201 Created**
-
+**Response:** `201 Created`
 ```json
 {
   "id": "uuid...",
-  "status": "NEW",
-  "total_amount": 150000
+  "email": "owner@tokopi.com",
+  "full_name": "John Doe",
+  "role": "STORE_OWNER",
+  "store_id": "uuid-store-123"
+}
+```
+
+### Login
+
+Authenticate dan mendapatkan JWT access token.
+
+**Endpoint:** `POST /auth/login`  
+**Auth:** ❌ None
+
+**Request Body:**
+```json
+{
+  "email": "owner@tokopi.com",
+  "password": "strongpassword"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": "uuid...",
+    "email": "owner@tokopi.com",
+    "role": "STORE_OWNER"
+  }
 }
 ```
 
 ---
 
-#### Get Order
+## 👥 Roles & Permissions (RBAC)
 
-**GET** `/orders/:id`
-Auth: ✅ Required
+| Role | Permissions |
+|------|-------------|
+| `SUPER_ADMIN` | Full platform access (all stores & data) |
+| `STORE_OWNER` | Manage store, products, staff, reports, approve VOID |
+| `KASIR` | Open/Close shift, create order, process payment |
+| `KITCHEN` | View orders, update status (COOKING, READY) |
+| `STAFF` | Create order only (waiter) |
 
 ---
 
-#### Update Order Status
+## 🍽 2. Table Sessions (QR Ordering)
 
-**PATCH** `/orders/:id/status`
-Auth: ✅ Required
+Untuk customer self-ordering via QR code.
 
+### Create Table Session
+
+**Endpoint:** `POST /table-sessions`  
+**Auth:** ✅ Required
+
+**Request Body:**
+```json
+{
+  "table_id": "uuid-table-123"
+}
+```
+
+**Response:** `201 Created`
+```json
+{
+  "id": "uuid-session-456",
+  "token": "session_token_xxx",
+  "expires_at": "2026-01-11T18:00:00Z"
+}
+```
+
+### Validate Table Session
+
+**Endpoint:** `POST /table-sessions/validate`  
+**Auth:** ❌ None
+
+**Request Body:**
+```json
+{
+  "token": "session_token_xxx"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "table_id": "uuid-table-123",
+  "store_id": "uuid-store-123",
+  "valid": true
+}
+```
+
+---
+
+## 🧾 3. Orders
+
+### Create Order
+
+**Endpoint:** `POST /orders`  
+**Auth:** ✅ Required (STAFF, KASIR, STORE_OWNER)
+
+**Request Body:**
+```json
+{
+  "store_id": "uuid-store-123",
+  "table_session_id": "uuid-session-456",
+  "items": [
+    {
+      "product_id": "uuid-product-789",
+      "quantity": 2,
+      "note": "Less ice"
+    }
+  ],
+  "note": "Table 5",
+  "idempotency_key": "order-abc-123"
+}
+```
+
+**Response:** `201 Created`
+```json
+{
+  "id": "uuid-order-999",
+  "order_number": "ORD-00021",
+  "status": "NEW",
+  "total_amount": 150000,
+  "payment_status": "UNPAID"
+}
+```
+
+### Get Order Detail
+
+**Endpoint:** `GET /orders/:id`  
+**Auth:** ✅ Required
+
+### Update Order Status
+
+**Endpoint:** `PATCH /orders/:id/status`  
+**Auth:** ✅ Required (KITCHEN, STORE_OWNER)
+
+**Request Body:**
 ```json
 {
   "status": "COOKING"
 }
 ```
 
-**Valid Statuses:**
-
+**Valid Status Flow:**
 ```
-NEW | ACCEPTED | COOKING | READY | DONE | VOIDED
+NEW → ACCEPTED → COOKING → READY → DONE
+       ↓
+    VOIDED (terminal, requires STORE_OWNER)
 ```
 
 ---
 
-### 4️⃣ Shifts (Cashier)
+## 💰 4. Shifts (Cashier)
 
-#### Open Shift
+### Open Shift
 
-**POST** `/shifts/open`
-Auth: ✅ Cashier
+**Endpoint:** `POST /shifts/open`  
+**Auth:** ✅ KASIR
 
+**Request Body:**
 ```json
 {
-  "outlet_id": "uuid...",
-  "start_cash": 200000,
-  "user_id": "uuid..."
+  "store_id": "uuid-store-123",
+  "opening_cash": 500000
 }
 ```
 
----
+### Close Shift
 
-#### Close Shift
+**Endpoint:** `POST /shifts/close`  
+**Auth:** ✅ KASIR
 
-**POST** `/shifts/close`
-Auth: ✅ Cashier
-
+**Request Body:**
 ```json
 {
-  "shift_id": "uuid...",
+  "shift_id": "uuid-shift-123",
   "end_cash": 1500000
 }
 ```
 
----
+### Get Current Shift
 
-#### Get Current Shift
-
-**GET** `/shifts/current`
-Auth: ✅ Required
+**Endpoint:** `GET /shifts/current`  
+**Auth:** ✅ Required
 
 ---
 
-### 5️⃣ Realtime (WebSocket)
+## 🔴 5. Realtime (WebSocket)
 
-**URL**
+Menerima live events untuk orders.
 
+**WebSocket URL:**
 ```
 ws://localhost:8080/api/v1/ws
 ```
 
-#### Events
+### Event: NEW_ORDER
 
-**NEW_ORDER**
+Triggered ketika order baru dibuat.
 
 ```json
 {
   "type": "NEW_ORDER",
   "payload": {
-    "id": "...",
+    "id": "uuid-order-999",
+    "order_number": "ORD-00021",
     "status": "NEW"
   }
 }
@@ -347,81 +368,142 @@ ws://localhost:8080/api/v1/ws
 
 ---
 
-## 🧪 Postman Testing Guide
+## 🧠 6. Business Logic Rules
 
-### Prerequisites
+### Order State Machine
 
-* Postman installed
-  👉 [https://www.postman.com/](https://www.postman.com/)
-* Backend server running
-* Import `postman_collection.json`
+- Strict transition enforcement (tidak bisa skip atau revert)
+- Terminal states: `DONE`, `VOIDED`
+- Flow: `NEW → ACCEPTED → COOKING → READY → DONE`
 
----
+### Idempotency (Create Order)
 
-### Step 1: Import & Configure
+Untuk mencegah duplicate orders:
+- Kirim `idempotency_key` pada request
+- Jika key sudah ada → server return response original
+- Tidak ada duplicate order yang dibuat
 
-1. Open Postman → Import
-2. Import `postman_collection.json`
-3. Open **POS Backend API → Variables**
-4. Set:
+### RBAC Enforcement
 
-   * `base_url` → `http://localhost:8080`
-   * `outlet_id` → valid UUID
-   * `product_id` → valid UUID
-
----
-
-### Step 2: Authentication
-
-1. Open **Auth / Login**
-2. Send request
-3. ✅ Token is auto-saved to `{{token}}`
+- **VOID** requires `STORE_OWNER`
+- **KASIR** cannot VOID
+- **STAFF** cannot update order status
+- **KITCHEN** cannot create orders
 
 ---
 
-### Step 3: Shift Management
+## 🗄 7. Database Schema
 
-1. Open **Shifts / Open Shift**
-2. Send request
-3. Verify shift created successfully
+### Core Tables
 
----
+**stores**
+```
+id, name, location, created_at
+```
 
-### Step 4: Order & Realtime Test
+**profiles**
+```
+id, email, full_name, role, store_id
+```
 
-#### WebSocket
+**roles**
+```
+code, name, description
+```
 
-1. New → WebSocket Request
-2. URL:
+### Order Management
 
-   ```
-   ws://localhost:8080/api/v1/ws
-   ```
-3. Click **Connect**
+**orders**
+```
+id, store_id, order_number, status,
+total_amount, payment_status,
+table_session_id, created_at
+```
 
-#### Create Order
+**order_items**
+```
+id, order_id, product_id,
+quantity, price, total_price, note
+```
 
-1. Open **Orders / Create Order**
-2. Send request
-3. ✅ WebSocket should receive:
+### Products
 
-```json
-{
-  "type": "NEW_ORDER"
-}
+**products**
+```
+id, store_id, name, description,
+price, stock, category_id, is_available
+```
+
+**categories**
+```
+id, store_id, name
+```
+
+### Payment & Shift
+
+**payments**
+```
+id, order_id, amount, payment_method, status, qris_url
+```
+
+**shifts**
+```
+id, store_id, user_id, start_time, end_time, start_cash, end_cash
+```
+
+### Security & Audit
+
+**table_sessions**
+```
+id, table_id, token, expires_at
+```
+
+**audit_logs**
+```
+id, user_id, action, entity, entity_id, before_state, after_state
+```
+
+**idempotency_keys**
+```
+key, response_status, response_body, created_at
 ```
 
 ---
 
-## 🧾 Cheatsheet
+## 🐛 Troubleshooting
 
-| Action           | Command                |
-| ---------------- | ---------------------- |
-| Start DB & Redis | `docker-compose up -d` |
-| Stop DB & Redis  | `docker-compose down`  |
-| Run App          | `go run cmd/main.go`   |
-| Run Tests        | `go test ./...`        |
-| Run Migration    | `./migrate-up.bat`     |
-| Reset Database   | `./migrate-down.bat`   |
+### Database Migration Gagal
 
+- Pastikan PostgreSQL container berjalan dan healthy
+- Check Docker logs: `docker logs pos_postgres`
+- Verify connection string di config
 
+### Server Tidak Bisa Start
+
+- Cek apakah port 8080 sudah digunakan
+- Pastikan Redis dan PostgreSQL sudah running
+- Verify environment variables
+
+### WebSocket Connection Failed
+
+- Pastikan server sudah running
+- Check firewall settings
+- Verify WebSocket URL format
+
+---
+
+## 📝 License
+
+[Add your license here]
+
+---
+
+## 🤝 Contributing
+
+[Add contributing guidelines here]
+
+---
+
+## 📧 Contact
+
+[Add contact information here]
