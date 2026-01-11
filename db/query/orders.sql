@@ -1,9 +1,9 @@
 -- name: CreateOrder :one
 INSERT INTO orders (
-    outlet_id, table_session_id, cashier_id, order_number, 
-    total_amount, tax_amount, discount_amount, final_amount, note
+    store_id, table_session_id, cashier_id, order_number, 
+    total_amount, tax_amount, discount_amount, final_amount, note, status, payment_status
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 ) RETURNING *;
 
 -- name: CreateOrderItem :one
@@ -17,9 +17,9 @@ INSERT INTO order_items (
 SELECT * FROM orders
 WHERE id = $1 LIMIT 1;
 
--- name: ListOrdersByOutlet :many
+-- name: ListOrdersByStore :many
 SELECT * FROM orders
-WHERE outlet_id = $1 
+WHERE store_id = $1 
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3;
 
