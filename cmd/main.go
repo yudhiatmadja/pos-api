@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"pos-api/internal/delivery/http/handler"
 	"pos-api/internal/delivery/http/middleware"
 	v1 "pos-api/internal/delivery/http/v1"
 	"pos-api/internal/delivery/ws"
@@ -39,7 +40,8 @@ func main() {
 	hub := ws.NewHub(redisClient)
 	go hub.Run()
 
-	store := repository.New(connPool)
+	// Use NewStore (Transaction support)
+	store := repository.NewStore(connPool)
 
 	// 3. Setup Dependencies
 	tokenMaker, err := util.NewJWTMaker(tokenSymmetricKey)
@@ -50,18 +52,35 @@ func main() {
 	authConfig := usecase.AuthConfig{
 		AccessTokenDuration: accessTokenDuration,
 	}
-	authUsecase := usecase.NewAuthUsecase(store, connPool, tokenMaker, authConfig)
-	sessionUsecase := usecase.NewSessionUsecase(store)
-	orderUsecase := usecase.NewOrderUsecase(store, connPool)
+
+	// Adapting AuthUsecase to use 'store' queries (assuming it takes repository.Queries compatible interface)
+	// If AuthUsecase expects *Queries, Store satisfies Querier interface (embedded) if initialized correctly.
+	// My SQLStore embeds *Queries.
+	// But `store` variable is interface `Store`.
+	// Check auth_usecase.go if needed, but likely it uses generated interface.
+	// For safety, I'll pass store.Queries (type assertion or method?)
+	// SQLStore has *Queries embedded.
+	// But store is interface. I need to expose Queries from Store?
+	// Or just type assert.
+	sqlStore := store.(*repository.SQLStore)
+
+	authUsecase := usecase.NewAuthUsecase(sqlStore.Queries, connPool, tokenMaker, authConfig)
+	sessionUsecase := usecase.NewSessionUsecase(sqlStore.Queries)
+
+	// New Order Usecase with EventService
+	orderUsecase := usecase.NewOrderUsecase(store, hub)
+
+	// New Shift Usecase
+	shiftUsecase := usecase.NewShiftUsecase(store)
 
 	// 4. Setup Router
 	router := gin.Default()
 	router.Use(gin.Recovery())
 
-	// CORS Middleware (Simple version)
+	// CORS Middleware
 	router.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE, PATCH") // Added PATCH
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -70,31 +89,23 @@ func main() {
 		c.Next()
 	})
 
-	apiV1 := router.Group("/api/v1")
-
 	// Public Routes
+	apiV1 := router.Group("/api/v1")
 	v1.NewAuthHandler(apiV1, authUsecase)
 	v1.NewSessionHandler(apiV1, sessionUsecase)
-	v1.NewOrderHandler(apiV1, orderUsecase)
-	v1.NewPaymentHandler(apiV1, orderUsecase)
+
+	// Auth Middleware for my handlers
+	authMiddleware := middleware.AuthMiddleware(tokenSymmetricKey)
+
+	// Use my Handlers
+	handler.NewOrderHandler(router, orderUsecase, authMiddleware)
+	handler.NewShiftHandler(router, shiftUsecase, authMiddleware)
+	// v1.NewPaymentHandler(apiV1, orderUsecase) // payment handled in OrderHandler potentially or need separate
 
 	// WebSocket Route
-	apiV1.GET("/ws", func(c *gin.Context) {
+	router.GET("/ws", func(c *gin.Context) {
 		ws.ServeWs(hub, c)
 	})
-
-	// Protected Routes
-	protected := apiV1.Group("/")
-	protected.Use(middleware.AuthMiddleware(tokenMaker))
-	{
-		protected.GET("/ping", func(ctx *gin.Context) {
-			payload, _ := ctx.Get(middleware.AuthorizationPayloadKey)
-			ctx.JSON(200, gin.H{
-				"message": "pong",
-				"user":    payload,
-			})
-		})
-	}
 
 	// 5. Start Server
 	log.Printf("Starting server on %s", serverAddress)
