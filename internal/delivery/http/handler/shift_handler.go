@@ -13,16 +13,9 @@ type ShiftHandler struct {
 	ShiftUsecase domain.ShiftUsecase
 }
 
-func NewShiftHandler(router *gin.Engine, uc domain.ShiftUsecase, middleware gin.HandlerFunc) {
-	handler := &ShiftHandler{
+func NewShiftHandler(uc domain.ShiftUsecase) *ShiftHandler {
+	return &ShiftHandler{
 		ShiftUsecase: uc,
-	}
-
-	protected := router.Group("/api/v1/shifts", middleware)
-	{
-		protected.POST("/open", handler.OpenShift)
-		protected.POST("/close", handler.CloseShift)
-		protected.GET("/current", handler.GetCurrentShift)
 	}
 }
 

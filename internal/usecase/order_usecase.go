@@ -153,7 +153,7 @@ func (uc *orderUsecase) CreateOrder(ctx context.Context, req *domain.CreateOrder
 	return &order, nil
 }
 
-func (uc *orderUsecase) UpdateStatus(ctx context.Context, orderID uuid.UUID, status domain.OrderStatus, userID uuid.UUID) (*domain.Order, error) {
+func (uc *orderUsecase) UpdateStatus(ctx context.Context, orderID uuid.UUID, status domain.OrderStatus, userID uuid.UUID, userRole string) (*domain.Order, error) {
 	// 1. Get current order to validate transition
 	currentOrder, err := uc.store.GetOrder(ctx, pgtype.UUID{Bytes: orderID, Valid: true})
 	if err != nil {
@@ -163,6 +163,13 @@ func (uc *orderUsecase) UpdateStatus(ctx context.Context, orderID uuid.UUID, sta
 	// 2. Validate state transition
 	if !isValidTransition(domain.OrderStatus(currentOrder.Status), status) {
 		return nil, fmt.Errorf("invalid status transition from %s to %s", currentOrder.Status, status)
+	}
+
+	// 3. SPECIAL CHECK: Voiding requires STORE_OWNER
+	if status == domain.OrderStatusVoided {
+		if userRole != string(domain.RoleStoreOwner) && userRole != string(domain.RoleSuperAdmin) {
+			return nil, fmt.Errorf("permission denied: only STORE_OWNER can void orders")
+		}
 	}
 
 	// 3. Update status

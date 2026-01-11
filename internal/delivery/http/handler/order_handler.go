@@ -13,18 +13,9 @@ type OrderHandler struct {
 	OrderUsecase domain.OrderUsecase
 }
 
-func NewOrderHandler(router *gin.Engine, uc domain.OrderUsecase, middleware gin.HandlerFunc) {
-	handler := &OrderHandler{
+func NewOrderHandler(uc domain.OrderUsecase) *OrderHandler {
+	return &OrderHandler{
 		OrderUsecase: uc,
-	}
-
-	api := router.Group("/api/v1")
-	{
-		api.POST("/orders", handler.CreateOrder)
-		api.GET("/orders/:id", handler.GetOrder)
-		// Protected routes
-		protected := api.Group("/", middleware)
-		protected.PATCH("/orders/:id/status", handler.UpdateStatus)
 	}
 }
 
@@ -63,7 +54,32 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 	userIDStr := c.GetString("user_id")
 	userID, _ := uuid.Parse(userIDStr)
 
-	order, err := h.OrderUsecase.UpdateStatus(c.Request.Context(), orderID, domain.OrderStatus(req.Status), userID)
+	// Get role from context (set by AuthMiddleware, standardizing on single "role" for logic check, or check all?)
+	// For simplicity, we assume primary role or check if any of them is owner.
+	// But AuthMiddleware sets "roles" []string.
+	// Use helper to get roles.
+	var userRole string
+	if rolesVal, exists := c.Get("roles"); exists {
+		if roles, ok := rolesVal.([]string); ok && len(roles) > 0 {
+			userRole = roles[0] // Just taking first for now or we need to pass all?
+			// Logic requires checking if ONE of them is StoreOwner.
+			// Let's pass the first one, or better change usecase to accept slice?
+			// Simpler: Check explicit permission here or pass strings.
+			// Re-reading logic: "if userRole != StoreOwner".
+			// If user has multiple roles, we should check if *any* is StoreOwner.
+			for _, r := range roles {
+				if r == string(domain.RoleStoreOwner) || r == string(domain.RoleSuperAdmin) {
+					userRole = r
+					break
+				}
+			}
+			if userRole == "" {
+				userRole = roles[0]
+			}
+		}
+	}
+
+	order, err := h.OrderUsecase.UpdateStatus(c.Request.Context(), orderID, domain.OrderStatus(req.Status), userID, userRole)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

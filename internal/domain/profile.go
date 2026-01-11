@@ -10,10 +10,11 @@ import (
 type UserRole string
 
 const (
-	RoleSuperAdmin UserRole = "super_admin"
-	RoleStoreOwner UserRole = "store_owner"
-	RoleStaff      UserRole = "staff"
-	RoleSupplier   UserRole = "supplier"
+	RoleSuperAdmin UserRole = "SUPER_ADMIN"
+	RoleStoreOwner UserRole = "STORE_OWNER"
+	RoleKasir      UserRole = "KASIR"
+	RoleKitchen    UserRole = "KITCHEN"
+	RoleStaff      UserRole = "STAFF"
 )
 
 type Profile struct {

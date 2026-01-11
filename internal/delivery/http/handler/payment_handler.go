@@ -13,17 +13,9 @@ type PaymentHandler struct {
 	PaymentUsecase domain.PaymentUsecase
 }
 
-func NewPaymentHandler(router *gin.Engine, uc domain.PaymentUsecase, middleware gin.HandlerFunc) {
-	handler := &PaymentHandler{
+func NewPaymentHandler(uc domain.PaymentUsecase) *PaymentHandler {
+	return &PaymentHandler{
 		PaymentUsecase: uc,
-	}
-
-	// Group: /api/v1/payments
-	api := router.Group("/api/v1/payments")
-	// Protected
-	protected := api.Group("/", middleware)
-	{
-		protected.POST("/qris/upload", handler.UploadQRIS)
 	}
 }
 

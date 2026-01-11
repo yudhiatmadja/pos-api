@@ -13,6 +13,7 @@ import (
 	"pos-api/internal/delivery/http/middleware"
 	v1 "pos-api/internal/delivery/http/v1"
 	"pos-api/internal/delivery/ws"
+	"pos-api/internal/domain"
 	"pos-api/internal/repository"
 	"pos-api/internal/usecase"
 	"pos-api/internal/util"
@@ -89,10 +90,44 @@ func main() {
 	// Auth Middleware
 	authMiddleware := middleware.AuthMiddleware(tokenMaker)
 
-	// Protected Routes handled by specific Handlers
-	handler.NewOrderHandler(router, orderUsecase, authMiddleware)
-	handler.NewShiftHandler(router, shiftUsecase, authMiddleware)
-	handler.NewPaymentHandler(router, paymentUsecase, authMiddleware)
+	// Protected Routes
+	roleMiddleware := middleware.RoleMiddleware
+
+	// 1. Transaction / Order (Create Order): KASIR, STAFF (Staff with limitation)
+	// Handlers
+	orderHandler := handler.NewOrderHandler(orderUsecase)
+	shiftHandler := handler.NewShiftHandler(shiftUsecase)
+	paymentHandler := handler.NewPaymentHandler(paymentUsecase)
+
+	// 1. Transaction / Order (Create Order): KASIR, STAFF (Staff with limitation)
+	orderRoutes := apiV1.Group("/orders")
+	orderRoutes.Use(authMiddleware)
+	orderRoutes.POST("", roleMiddleware(string(domain.RoleKasir), string(domain.RoleStaff)), orderHandler.CreateOrder)
+
+	// Update Status: KITCHEN primarily, but Owner can too.
+	orderRoutes.PATCH("/:id/status", roleMiddleware(string(domain.RoleKitchen), string(domain.RoleStoreOwner), string(domain.RoleKasir)), orderHandler.UpdateStatus)
+
+	orderRoutes.GET("/:id", roleMiddleware(string(domain.RoleKasir), string(domain.RoleStaff), string(domain.RoleStoreOwner), string(domain.RoleKitchen)), orderHandler.GetOrder)
+
+	// 2. Shift: KASIR only
+	shiftRoutes := apiV1.Group("/shifts")
+	shiftRoutes.Use(authMiddleware)
+	shiftRoutes.POST("/open", roleMiddleware(string(domain.RoleKasir)), shiftHandler.OpenShift)
+	shiftRoutes.POST("/close", roleMiddleware(string(domain.RoleKasir)), shiftHandler.CloseShift)
+	shiftRoutes.GET("/current", roleMiddleware(string(domain.RoleKasir)), shiftHandler.GetCurrentShift)
+
+	// 3. Payment: KASIR only
+	paymentRoutes := apiV1.Group("/payments")
+	paymentRoutes.Use(authMiddleware)
+	paymentRoutes.POST("/qris/upload", roleMiddleware(string(domain.RoleKasir)), paymentHandler.UploadQRIS)
+
+	// 4. Products (Edit): STORE_OWNER only
+	// productRoutes := apiV1.Group("/products")
+	// productRoutes.Use(authMiddleware, roleMiddleware(string(domain.RoleStoreOwner)))
+
+	// 5. Reports (Laporan): SUPER_ADMIN, STORE_OWNER
+	// reportRoutes := apiV1.Group("/reports")
+	// reportRoutes.Use(authMiddleware, roleMiddleware(string(domain.RoleSuperAdmin), string(domain.RoleStoreOwner)))
 
 	// WebSocket Route
 	apiV1.GET("/ws", func(c *gin.Context) {
