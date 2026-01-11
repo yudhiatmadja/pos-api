@@ -13,30 +13,30 @@ import (
 
 const closeShift = `-- name: CloseShift :one
 UPDATE shifts
-SET end_time = NOW(),
-    end_cash = $2,
+SET closed_at = NOW(),
+    closing_cash = $2,
     expected_cash = $3
 WHERE id = $1
-RETURNING id, user_id, outlet_id, start_time, end_time, start_cash, end_cash, expected_cash
+RETURNING id, user_id, store_id, opened_at, closed_at, opening_cash, closing_cash, expected_cash
 `
 
 type CloseShiftParams struct {
 	ID           pgtype.UUID    `json:"id"`
-	EndCash      pgtype.Numeric `json:"end_cash"`
+	ClosingCash  pgtype.Numeric `json:"closing_cash"`
 	ExpectedCash pgtype.Numeric `json:"expected_cash"`
 }
 
 func (q *Queries) CloseShift(ctx context.Context, arg CloseShiftParams) (Shift, error) {
-	row := q.db.QueryRow(ctx, closeShift, arg.ID, arg.EndCash, arg.ExpectedCash)
+	row := q.db.QueryRow(ctx, closeShift, arg.ID, arg.ClosingCash, arg.ExpectedCash)
 	var i Shift
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.OutletID,
-		&i.StartTime,
-		&i.EndTime,
-		&i.StartCash,
-		&i.EndCash,
+		&i.StoreID,
+		&i.OpenedAt,
+		&i.ClosedAt,
+		&i.OpeningCash,
+		&i.ClosingCash,
 		&i.ExpectedCash,
 	)
 	return i, err
@@ -44,37 +44,37 @@ func (q *Queries) CloseShift(ctx context.Context, arg CloseShiftParams) (Shift, 
 
 const createShift = `-- name: CreateShift :one
 INSERT INTO shifts (
-    user_id, outlet_id, start_cash
+    user_id, store_id, opening_cash
 ) VALUES (
     $1, $2, $3
-) RETURNING id, user_id, outlet_id, start_time, end_time, start_cash, end_cash, expected_cash
+) RETURNING id, user_id, store_id, opened_at, closed_at, opening_cash, closing_cash, expected_cash
 `
 
 type CreateShiftParams struct {
-	UserID    pgtype.UUID    `json:"user_id"`
-	OutletID  pgtype.UUID    `json:"outlet_id"`
-	StartCash pgtype.Numeric `json:"start_cash"`
+	UserID      pgtype.UUID    `json:"user_id"`
+	StoreID     pgtype.UUID    `json:"store_id"`
+	OpeningCash pgtype.Numeric `json:"opening_cash"`
 }
 
 func (q *Queries) CreateShift(ctx context.Context, arg CreateShiftParams) (Shift, error) {
-	row := q.db.QueryRow(ctx, createShift, arg.UserID, arg.OutletID, arg.StartCash)
+	row := q.db.QueryRow(ctx, createShift, arg.UserID, arg.StoreID, arg.OpeningCash)
 	var i Shift
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.OutletID,
-		&i.StartTime,
-		&i.EndTime,
-		&i.StartCash,
-		&i.EndCash,
+		&i.StoreID,
+		&i.OpenedAt,
+		&i.ClosedAt,
+		&i.OpeningCash,
+		&i.ClosingCash,
 		&i.ExpectedCash,
 	)
 	return i, err
 }
 
 const getCurrentShift = `-- name: GetCurrentShift :one
-SELECT id, user_id, outlet_id, start_time, end_time, start_cash, end_cash, expected_cash FROM shifts
-WHERE user_id = $1 AND end_time IS NULL
+SELECT id, user_id, store_id, opened_at, closed_at, opening_cash, closing_cash, expected_cash FROM shifts
+WHERE user_id = $1 AND closed_at IS NULL
 LIMIT 1
 `
 
@@ -84,52 +84,31 @@ func (q *Queries) GetCurrentShift(ctx context.Context, userID pgtype.UUID) (Shif
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.OutletID,
-		&i.StartTime,
-		&i.EndTime,
-		&i.StartCash,
-		&i.EndCash,
-		&i.ExpectedCash,
-	)
-	return i, err
-}
-
-const getShiftById = `-- name: GetShiftById :one
-SELECT id, user_id, outlet_id, start_time, end_time, start_cash, end_cash, expected_cash FROM shifts
-WHERE id = $1 LIMIT 1
-`
-
-func (q *Queries) GetShiftById(ctx context.Context, id pgtype.UUID) (Shift, error) {
-	row := q.db.QueryRow(ctx, getShiftById, id)
-	var i Shift
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.OutletID,
-		&i.StartTime,
-		&i.EndTime,
-		&i.StartCash,
-		&i.EndCash,
+		&i.StoreID,
+		&i.OpenedAt,
+		&i.ClosedAt,
+		&i.OpeningCash,
+		&i.ClosingCash,
 		&i.ExpectedCash,
 	)
 	return i, err
 }
 
 const listShifts = `-- name: ListShifts :many
-SELECT id, user_id, outlet_id, start_time, end_time, start_cash, end_cash, expected_cash FROM shifts
-WHERE outlet_id = $1
-ORDER BY start_time DESC
+SELECT id, user_id, store_id, opened_at, closed_at, opening_cash, closing_cash, expected_cash FROM shifts
+WHERE store_id = $1
+ORDER BY opened_at DESC
 LIMIT $2 OFFSET $3
 `
 
 type ListShiftsParams struct {
-	OutletID pgtype.UUID `json:"outlet_id"`
-	Limit    int32       `json:"limit"`
-	Offset   int32       `json:"offset"`
+	StoreID pgtype.UUID `json:"store_id"`
+	Limit   int32       `json:"limit"`
+	Offset  int32       `json:"offset"`
 }
 
 func (q *Queries) ListShifts(ctx context.Context, arg ListShiftsParams) ([]Shift, error) {
-	rows, err := q.db.Query(ctx, listShifts, arg.OutletID, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listShifts, arg.StoreID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -140,11 +119,11 @@ func (q *Queries) ListShifts(ctx context.Context, arg ListShiftsParams) ([]Shift
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.OutletID,
-			&i.StartTime,
-			&i.EndTime,
-			&i.StartCash,
-			&i.EndCash,
+			&i.StoreID,
+			&i.OpenedAt,
+			&i.ClosedAt,
+			&i.OpeningCash,
+			&i.ClosingCash,
 			&i.ExpectedCash,
 		); err != nil {
 			return nil, err

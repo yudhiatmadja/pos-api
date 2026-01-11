@@ -9,19 +9,28 @@ import (
 )
 
 type AuditLog struct {
-	ID         pgtype.UUID        `json:"id"`
-	UserID     pgtype.UUID        `json:"user_id"`
-	Action     string             `json:"action"`
-	EntityName pgtype.Text        `json:"entity_name"`
-	EntityID   pgtype.UUID        `json:"entity_id"`
-	Details    []byte             `json:"details"`
-	IpAddress  pgtype.Text        `json:"ip_address"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Action    string             `json:"action"`
+	Entity    pgtype.Text        `json:"entity"`
+	EntityID  pgtype.UUID        `json:"entity_id"`
+	Details   []byte             `json:"details"`
+	IpAddress pgtype.Text        `json:"ip_address"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	Before    []byte             `json:"before"`
+	After     []byte             `json:"after"`
+}
+
+type AuthUser struct {
+	ID                pgtype.UUID        `json:"id"`
+	Email             string             `json:"email"`
+	EncryptedPassword string             `json:"encrypted_password"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
 type Category struct {
 	ID        pgtype.UUID        `json:"id"`
-	OutletID  pgtype.UUID        `json:"outlet_id"`
+	StoreID   pgtype.UUID        `json:"store_id"`
 	Name      string             `json:"name"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
@@ -35,7 +44,7 @@ type IdempotencyKey struct {
 
 type Order struct {
 	ID             pgtype.UUID        `json:"id"`
-	OutletID       pgtype.UUID        `json:"outlet_id"`
+	StoreID        pgtype.UUID        `json:"store_id"`
 	TableSessionID pgtype.UUID        `json:"table_session_id"`
 	CashierID      pgtype.UUID        `json:"cashier_id"`
 	OrderNumber    string             `json:"order_number"`
@@ -61,15 +70,6 @@ type OrderItem struct {
 	Note         pgtype.Text    `json:"note"`
 }
 
-type Outlet struct {
-	ID        pgtype.UUID        `json:"id"`
-	Name      string             `json:"name"`
-	Address   pgtype.Text        `json:"address"`
-	Phone     pgtype.Text        `json:"phone"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-}
-
 type Payment struct {
 	ID              pgtype.UUID        `json:"id"`
 	OrderID         pgtype.UUID        `json:"order_id"`
@@ -79,6 +79,7 @@ type Payment struct {
 	Status          string             `json:"status"`
 	PaidAt          pgtype.Timestamptz `json:"paid_at"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	QrisUrl         pgtype.Text        `json:"qris_url"`
 }
 
 type Product struct {
@@ -89,10 +90,23 @@ type Product struct {
 	Category    pgtype.Text        `json:"category"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	OutletID    pgtype.UUID        `json:"outlet_id"`
+	StoreID     pgtype.UUID        `json:"store_id"`
 	CategoryID  pgtype.UUID        `json:"category_id"`
 	ImageUrl    pgtype.Text        `json:"image_url"`
 	IsAvailable pgtype.Bool        `json:"is_available"`
+	Description pgtype.Text        `json:"description"`
+	Sku         pgtype.Text        `json:"sku"`
+}
+
+type Profile struct {
+	ID           pgtype.UUID        `json:"id"`
+	Username     string             `json:"username"`
+	PasswordHash string             `json:"password_hash"`
+	Role         string             `json:"role"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	FullName     pgtype.Text        `json:"full_name"`
+	StoreID      pgtype.UUID        `json:"store_id"`
+	Email        pgtype.Text        `json:"email"`
 }
 
 type Role struct {
@@ -104,11 +118,11 @@ type Role struct {
 type Shift struct {
 	ID           pgtype.UUID        `json:"id"`
 	UserID       pgtype.UUID        `json:"user_id"`
-	OutletID     pgtype.UUID        `json:"outlet_id"`
-	StartTime    pgtype.Timestamptz `json:"start_time"`
-	EndTime      pgtype.Timestamptz `json:"end_time"`
-	StartCash    pgtype.Numeric     `json:"start_cash"`
-	EndCash      pgtype.Numeric     `json:"end_cash"`
+	StoreID      pgtype.UUID        `json:"store_id"`
+	OpenedAt     pgtype.Timestamptz `json:"opened_at"`
+	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
+	OpeningCash  pgtype.Numeric     `json:"opening_cash"`
+	ClosingCash  pgtype.Numeric     `json:"closing_cash"`
 	ExpectedCash pgtype.Numeric     `json:"expected_cash"`
 }
 
@@ -121,9 +135,18 @@ type StockMovement struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
+type Store struct {
+	ID        pgtype.UUID        `json:"id"`
+	Name      string             `json:"name"`
+	Address   pgtype.Text        `json:"address"`
+	Phone     pgtype.Text        `json:"phone"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Table struct {
 	ID        pgtype.UUID        `json:"id"`
-	OutletID  pgtype.UUID        `json:"outlet_id"`
+	StoreID   pgtype.UUID        `json:"store_id"`
 	Name      string             `json:"name"`
 	Capacity  pgtype.Int4        `json:"capacity"`
 	QrCode    pgtype.Text        `json:"qr_code"`
@@ -137,14 +160,6 @@ type TableSession struct {
 	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
 	IsActive  pgtype.Bool        `json:"is_active"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
-}
-
-type User struct {
-	ID           pgtype.UUID        `json:"id"`
-	Username     string             `json:"username"`
-	PasswordHash string             `json:"password_hash"`
-	Role         string             `json:"role"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 type UserRole struct {

@@ -10,23 +10,23 @@ import (
 type Shift struct {
 	ID           uuid.UUID  `json:"id"`
 	UserID       uuid.UUID  `json:"user_id"`
-	OutletID     uuid.UUID  `json:"outlet_id"`
-	StartTime    time.Time  `json:"start_time"`
-	EndTime      *time.Time `json:"end_time,omitempty"`
-	StartCash    float64    `json:"start_cash"`
-	EndCash      *float64   `json:"end_cash,omitempty"`
+	StoreID      uuid.UUID  `json:"store_id"`
+	OpenedAt     time.Time  `json:"opened_at"`
+	ClosedAt     *time.Time `json:"closed_at,omitempty"`
+	OpeningCash  float64    `json:"opening_cash"`
+	ClosingCash  *float64   `json:"closing_cash,omitempty"`
 	ExpectedCash *float64   `json:"expected_cash,omitempty"`
 }
 
 type OpenShiftRequest struct {
-	UserID    uuid.UUID `json:"user_id"`
-	OutletID  uuid.UUID `json:"outlet_id"`
-	StartCash float64   `json:"start_cash"`
+	UserID      uuid.UUID `json:"user_id"` // Usually from token, or implicit
+	StoreID     uuid.UUID `json:"store_id" binding:"required"`
+	OpeningCash float64   `json:"opening_cash" binding:"required,gte=0"`
 }
 
 type CloseShiftRequest struct {
-	ShiftID uuid.UUID `json:"shift_id"`
-	EndCash float64   `json:"end_cash"`
+	ShiftID     uuid.UUID `json:"shift_id" binding:"required"`
+	ClosingCash float64   `json:"closing_cash" binding:"required,gte=0"`
 }
 
 type ShiftUsecase interface {

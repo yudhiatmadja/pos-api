@@ -10,12 +10,11 @@ import (
 	"pos-api/internal/util"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type authUsecase struct {
-	repo       *repository.Queries // SQLC generated queries
-	pool       *pgxpool.Pool       // For transactions if needed
+	store      repository.Store // Use Store interface for Tx
 	tokenMaker util.TokenMaker
 	config     AuthConfig
 }
@@ -24,96 +23,135 @@ type AuthConfig struct {
 	AccessTokenDuration time.Duration
 }
 
-func NewAuthUsecase(repo *repository.Queries, pool *pgxpool.Pool, tokenMaker util.TokenMaker, config AuthConfig) domain.AuthUsecase {
+func NewAuthUsecase(store repository.Store, tokenMaker util.TokenMaker, config AuthConfig) domain.AuthUsecase {
 	return &authUsecase{
-		repo:       repo,
-		pool:       pool,
+		store:      store,
 		tokenMaker: tokenMaker,
 		config:     config,
 	}
 }
 
-func (uc *authUsecase) Register(ctx context.Context, req *domain.RegisterRequest) (*domain.User, error) {
+func (uc *authUsecase) Register(ctx context.Context, req *domain.RegisterRequest) (*domain.Profile, error) {
 	hashedPassword, err := util.HashPassword(req.Password)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create User
-	// Note: We need to adapt CreateUser params based on generated code.
-	// Assuming CreateUser takes (ctx, arg)
+	var profile *domain.Profile
 
-	// Transaction could be better here to ensure user + role assignment
-	// But simply:
-	user, err := uc.repo.CreateUser(ctx, repository.CreateUserParams{
-		Username:     req.Username,
-		PasswordHash: hashedPassword,
-		Role:         req.Role, // Legacy column
+	err = uc.store.ExecTx(ctx, func(q *repository.Queries) error {
+		// 1. Create Auth User (Simulated)
+		resAuth, err := q.CreateAuthUser(ctx, repository.CreateAuthUserParams{
+			Email:             req.Email,
+			EncryptedPassword: hashedPassword,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create auth user: %w", err)
+		}
+
+		// 2. Create Profile
+		// Profile ID matches Auth User ID
+		var storeID pgtype.UUID
+		if req.StoreID != "" {
+			parsedID, err := uuid.Parse(req.StoreID)
+			if err == nil {
+				storeID = pgtype.UUID{Bytes: parsedID, Valid: true}
+			}
+		}
+
+		resProfile, err := q.CreateProfile(ctx, repository.CreateProfileParams{
+			ID:       resAuth.ID, // Link ID
+			Email:    req.Email,
+			FullName: req.FullName,
+			Role:     string(req.Role),
+			StoreID:  storeID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create profile: %w", err)
+		}
+
+		// Map to domain
+		var sID *uuid.UUID
+		if resProfile.StoreID.Valid {
+			if idBytes, ok := resProfile.StoreID.Bytes.([16]byte); ok {
+				uid := uuid.UUID(idBytes)
+				sID = &uid
+			} else {
+				// Try direct conversion if scanned differently or sqlc version diff, usually Bytes is [16]byte
+				uid := uuid.UUID(resProfile.StoreID.Bytes)
+				sID = &uid
+			}
+		}
+
+		profile = &domain.Profile{
+			ID:        uuid.UUID(resProfile.ID.Bytes),
+			Email:     resProfile.Email.String,
+			FullName:  resProfile.FullName.String,
+			Role:      domain.UserRole(resProfile.Role),
+			StoreID:   sID,
+			CreatedAt: resProfile.CreatedAt.Time,
+			UpdatedAt: resProfile.UpdatedAt.Time,
+		}
+		return nil
 	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	// Create proper Role entry
-	err = uc.repo.AssignRoleToUser(ctx, repository.AssignRoleToUserParams{
-		UserID:   user.ID,
-		RoleCode: req.Role,
-	})
-	if err != nil {
-		// Cleanup user if this fails? For now just return error
-		return nil, fmt.Errorf("failed to assign role: %w", err)
-	}
-
-	return &domain.User{
-		ID:        uuid.UUID(user.ID.Bytes),
-		Username:  user.Username,
-		Roles:     []string{user.Role},
-		CreatedAt: user.CreatedAt.Time,
-	}, nil
+	return profile, nil
 }
 
 func (uc *authUsecase) Login(ctx context.Context, req *domain.LoginRequest) (*domain.LoginResponse, error) {
-	user, err := uc.repo.GetUserByUsername(ctx, req.Username)
+	// 1. Get Auth User
+	authUser, err := uc.store.GetAuthUserByEmail(ctx, req.Email)
 	if err != nil {
-		return nil, fmt.Errorf("user not found")
+		return nil, fmt.Errorf("invalid credentials") // User not found
 	}
 
-	err = util.CheckPassword(req.Password, user.PasswordHash)
+	// 2. Check Password
+	err = util.CheckPassword(req.Password, authUser.EncryptedPassword)
 	if err != nil {
-		return nil, fmt.Errorf("invalid password")
+		return nil, fmt.Errorf("invalid credentials")
 	}
 
-	// Fetch roles
-	// In the legacy schema we have 'role' column, but we also have user_roles table now.
-	// Let's get roles from user_roles
-	rolesRaw, err := uc.repo.GetUserRoles(ctx, user.ID)
-	var roles []string
-	if err != nil || len(rolesRaw) == 0 {
-		// Fallback to single role column if no user_roles found (legacy support)
-		roles = []string{user.Role}
-	} else {
-		for _, r := range rolesRaw {
-			roles = append(roles, r.Code)
-		}
+	// 3. Get Profile
+	profileDB, err := uc.store.GetProfile(ctx, authUser.ID)
+	if err != nil {
+		return nil, fmt.Errorf("profile not found")
 	}
+
+	// 4. Create Token
+	// Role is in profile
+	role := profileDB.Role
 
 	accessToken, err := uc.tokenMaker.CreateToken(
-		uuid.UUID(user.ID.Bytes),
-		user.Username,
-		roles,
+		uuid.UUID(authUser.ID.Bytes),
+		authUser.Email,
+		[]string{role}, // Pass as slice
 		uc.config.AccessTokenDuration,
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	// Map to domain
+	var sID *uuid.UUID
+	if profileDB.StoreID.Valid {
+		uid := uuid.UUID(profileDB.StoreID.Bytes)
+		sID = &uid
+	}
+
 	return &domain.LoginResponse{
 		AccessToken: accessToken,
-		User: domain.User{
-			ID:        uuid.UUID(user.ID.Bytes),
-			Username:  user.Username,
-			Roles:     roles,
-			CreatedAt: user.CreatedAt.Time,
+		Profile: &domain.Profile{
+			ID:        uuid.UUID(profileDB.ID.Bytes),
+			Email:     profileDB.Email.String,
+			FullName:  profileDB.FullName.String,
+			Role:      domain.UserRole(profileDB.Role),
+			StoreID:   sID,
+			CreatedAt: profileDB.CreatedAt.Time,
+			UpdatedAt: profileDB.UpdatedAt.Time,
 		},
 	}, nil
 }

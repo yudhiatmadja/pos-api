@@ -12,9 +12,11 @@ import (
 )
 
 const createSession = `-- name: CreateSession :one
-INSERT INTO table_sessions (table_id, token, expires_at)
-VALUES ($1, $2, $3)
-RETURNING id, table_id, token, expires_at, is_active, created_at
+INSERT INTO table_sessions (
+    table_id, token, expires_at
+) VALUES (
+    $1, $2, $3
+) RETURNING id, table_id, token, expires_at, is_active, created_at
 `
 
 type CreateSessionParams struct {
@@ -37,60 +39,14 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (T
 	return i, err
 }
 
-const createTable = `-- name: CreateTable :one
-INSERT INTO tables (outlet_id, name, capacity, qr_code)
-VALUES ($1, $2, $3, $4)
-RETURNING id, outlet_id, name, capacity, qr_code, created_at
-`
-
-type CreateTableParams struct {
-	OutletID pgtype.UUID `json:"outlet_id"`
-	Name     string      `json:"name"`
-	Capacity pgtype.Int4 `json:"capacity"`
-	QrCode   pgtype.Text `json:"qr_code"`
-}
-
-func (q *Queries) CreateTable(ctx context.Context, arg CreateTableParams) (Table, error) {
-	row := q.db.QueryRow(ctx, createTable,
-		arg.OutletID,
-		arg.Name,
-		arg.Capacity,
-		arg.QrCode,
-	)
-	var i Table
-	err := row.Scan(
-		&i.ID,
-		&i.OutletID,
-		&i.Name,
-		&i.Capacity,
-		&i.QrCode,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const getSessionByToken = `-- name: GetSessionByToken :one
-SELECT ts.id, ts.table_id, ts.token, ts.expires_at, ts.is_active, ts.created_at, t.outlet_id, t.name as table_name 
-FROM table_sessions ts
-JOIN tables t ON ts.table_id = t.id
-WHERE ts.token = $1 AND ts.is_active = TRUE AND ts.expires_at > NOW()
-LIMIT 1
+SELECT id, table_id, token, expires_at, is_active, created_at FROM table_sessions
+WHERE token = $1 LIMIT 1
 `
 
-type GetSessionByTokenRow struct {
-	ID        pgtype.UUID        `json:"id"`
-	TableID   pgtype.UUID        `json:"table_id"`
-	Token     string             `json:"token"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
-	IsActive  pgtype.Bool        `json:"is_active"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	OutletID  pgtype.UUID        `json:"outlet_id"`
-	TableName string             `json:"table_name"`
-}
-
-func (q *Queries) GetSessionByToken(ctx context.Context, token string) (GetSessionByTokenRow, error) {
+func (q *Queries) GetSessionByToken(ctx context.Context, token string) (TableSession, error) {
 	row := q.db.QueryRow(ctx, getSessionByToken, token)
-	var i GetSessionByTokenRow
+	var i TableSession
 	err := row.Scan(
 		&i.ID,
 		&i.TableID,
@@ -98,45 +54,47 @@ func (q *Queries) GetSessionByToken(ctx context.Context, token string) (GetSessi
 		&i.ExpiresAt,
 		&i.IsActive,
 		&i.CreatedAt,
-		&i.OutletID,
-		&i.TableName,
 	)
 	return i, err
 }
 
-const invalidateSession = `-- name: InvalidateSession :exec
-UPDATE table_sessions
-SET is_active = FALSE
-WHERE id = $1
+const getTableSessions = `-- name: GetTableSessions :many
+SELECT ts.id, ts.table_id, ts.token, ts.expires_at, ts.is_active, ts.created_at, t.store_id, t.name as table_name 
+FROM table_sessions ts
+JOIN tables t ON ts.table_id = t.id
+WHERE t.store_id = $1
+ORDER BY ts.created_at DESC
 `
 
-func (q *Queries) InvalidateSession(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, invalidateSession, id)
-	return err
+type GetTableSessionsRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	TableID   pgtype.UUID        `json:"table_id"`
+	Token     string             `json:"token"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	IsActive  pgtype.Bool        `json:"is_active"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	StoreID   pgtype.UUID        `json:"store_id"`
+	TableName string             `json:"table_name"`
 }
 
-const listTables = `-- name: ListTables :many
-SELECT id, outlet_id, name, capacity, qr_code, created_at FROM tables
-WHERE outlet_id = $1
-ORDER BY name
-`
-
-func (q *Queries) ListTables(ctx context.Context, outletID pgtype.UUID) ([]Table, error) {
-	rows, err := q.db.Query(ctx, listTables, outletID)
+func (q *Queries) GetTableSessions(ctx context.Context, storeID pgtype.UUID) ([]GetTableSessionsRow, error) {
+	rows, err := q.db.Query(ctx, getTableSessions, storeID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Table
+	var items []GetTableSessionsRow
 	for rows.Next() {
-		var i Table
+		var i GetTableSessionsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.OutletID,
-			&i.Name,
-			&i.Capacity,
-			&i.QrCode,
+			&i.TableID,
+			&i.Token,
+			&i.ExpiresAt,
+			&i.IsActive,
 			&i.CreatedAt,
+			&i.StoreID,
+			&i.TableName,
 		); err != nil {
 			return nil, err
 		}

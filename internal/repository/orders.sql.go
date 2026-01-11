@@ -13,15 +13,15 @@ import (
 
 const createOrder = `-- name: CreateOrder :one
 INSERT INTO orders (
-    outlet_id, table_session_id, cashier_id, order_number, 
-    total_amount, tax_amount, discount_amount, final_amount, note
+    store_id, table_session_id, cashier_id, order_number, 
+    total_amount, tax_amount, discount_amount, final_amount, note, status, payment_status
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9
-) RETURNING id, outlet_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+) RETURNING id, store_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at
 `
 
 type CreateOrderParams struct {
-	OutletID       pgtype.UUID    `json:"outlet_id"`
+	StoreID        pgtype.UUID    `json:"store_id"`
 	TableSessionID pgtype.UUID    `json:"table_session_id"`
 	CashierID      pgtype.UUID    `json:"cashier_id"`
 	OrderNumber    string         `json:"order_number"`
@@ -30,11 +30,13 @@ type CreateOrderParams struct {
 	DiscountAmount pgtype.Numeric `json:"discount_amount"`
 	FinalAmount    pgtype.Numeric `json:"final_amount"`
 	Note           pgtype.Text    `json:"note"`
+	Status         string         `json:"status"`
+	PaymentStatus  string         `json:"payment_status"`
 }
 
 func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
 	row := q.db.QueryRow(ctx, createOrder,
-		arg.OutletID,
+		arg.StoreID,
 		arg.TableSessionID,
 		arg.CashierID,
 		arg.OrderNumber,
@@ -43,11 +45,13 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		arg.DiscountAmount,
 		arg.FinalAmount,
 		arg.Note,
+		arg.Status,
+		arg.PaymentStatus,
 	)
 	var i Order
 	err := row.Scan(
 		&i.ID,
-		&i.OutletID,
+		&i.StoreID,
 		&i.TableSessionID,
 		&i.CashierID,
 		&i.OrderNumber,
@@ -107,7 +111,7 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 }
 
 const getOrder = `-- name: GetOrder :one
-SELECT id, outlet_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at FROM orders
+SELECT id, store_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at FROM orders
 WHERE id = $1 LIMIT 1
 `
 
@@ -116,7 +120,7 @@ func (q *Queries) GetOrder(ctx context.Context, id pgtype.UUID) (Order, error) {
 	var i Order
 	err := row.Scan(
 		&i.ID,
-		&i.OutletID,
+		&i.StoreID,
 		&i.TableSessionID,
 		&i.CashierID,
 		&i.OrderNumber,
@@ -134,7 +138,7 @@ func (q *Queries) GetOrder(ctx context.Context, id pgtype.UUID) (Order, error) {
 }
 
 const getOrdersBySession = `-- name: GetOrdersBySession :many
-SELECT id, outlet_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at FROM orders
+SELECT id, store_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at FROM orders
 WHERE table_session_id = $1
 ORDER BY created_at DESC
 `
@@ -150,7 +154,7 @@ func (q *Queries) GetOrdersBySession(ctx context.Context, tableSessionID pgtype.
 		var i Order
 		if err := rows.Scan(
 			&i.ID,
-			&i.OutletID,
+			&i.StoreID,
 			&i.TableSessionID,
 			&i.CashierID,
 			&i.OrderNumber,
@@ -174,21 +178,21 @@ func (q *Queries) GetOrdersBySession(ctx context.Context, tableSessionID pgtype.
 	return items, nil
 }
 
-const listOrdersByOutlet = `-- name: ListOrdersByOutlet :many
-SELECT id, outlet_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at FROM orders
-WHERE outlet_id = $1 
+const listOrdersByStore = `-- name: ListOrdersByStore :many
+SELECT id, store_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at FROM orders
+WHERE store_id = $1 
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
 `
 
-type ListOrdersByOutletParams struct {
-	OutletID pgtype.UUID `json:"outlet_id"`
-	Limit    int32       `json:"limit"`
-	Offset   int32       `json:"offset"`
+type ListOrdersByStoreParams struct {
+	StoreID pgtype.UUID `json:"store_id"`
+	Limit   int32       `json:"limit"`
+	Offset  int32       `json:"offset"`
 }
 
-func (q *Queries) ListOrdersByOutlet(ctx context.Context, arg ListOrdersByOutletParams) ([]Order, error) {
-	rows, err := q.db.Query(ctx, listOrdersByOutlet, arg.OutletID, arg.Limit, arg.Offset)
+func (q *Queries) ListOrdersByStore(ctx context.Context, arg ListOrdersByStoreParams) ([]Order, error) {
+	rows, err := q.db.Query(ctx, listOrdersByStore, arg.StoreID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +202,7 @@ func (q *Queries) ListOrdersByOutlet(ctx context.Context, arg ListOrdersByOutlet
 		var i Order
 		if err := rows.Scan(
 			&i.ID,
-			&i.OutletID,
+			&i.StoreID,
 			&i.TableSessionID,
 			&i.CashierID,
 			&i.OrderNumber,
@@ -226,7 +230,7 @@ const updateOrderPaymentStatus = `-- name: UpdateOrderPaymentStatus :one
 UPDATE orders
 SET payment_status = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING id, outlet_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at
+RETURNING id, store_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at
 `
 
 type UpdateOrderPaymentStatusParams struct {
@@ -239,7 +243,7 @@ func (q *Queries) UpdateOrderPaymentStatus(ctx context.Context, arg UpdateOrderP
 	var i Order
 	err := row.Scan(
 		&i.ID,
-		&i.OutletID,
+		&i.StoreID,
 		&i.TableSessionID,
 		&i.CashierID,
 		&i.OrderNumber,
@@ -260,7 +264,7 @@ const updateOrderStatus = `-- name: UpdateOrderStatus :one
 UPDATE orders
 SET status = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING id, outlet_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at
+RETURNING id, store_id, table_session_id, cashier_id, order_number, status, payment_status, total_amount, tax_amount, discount_amount, final_amount, note, created_at, updated_at
 `
 
 type UpdateOrderStatusParams struct {
@@ -273,7 +277,7 @@ func (q *Queries) UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusPa
 	var i Order
 	err := row.Scan(
 		&i.ID,
-		&i.OutletID,
+		&i.StoreID,
 		&i.TableSessionID,
 		&i.CashierID,
 		&i.OrderNumber,
